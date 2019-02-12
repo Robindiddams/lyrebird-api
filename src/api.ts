@@ -6,6 +6,12 @@ const dynamodb = new AWS.DynamoDB({
 	region: 'us-east-1',
 });
 
+const s3 = new AWS.S3({
+	region: 'us-east-1',
+});
+
+const uploadBucket = "lyrebird-uploads";
+
 const hash = (data) => {
 	return crypto.createHash('sha256').update(data).digest('base64');
 };
@@ -21,11 +27,29 @@ export const upload: Handler = async (event: APIGatewayEvent, context: Context) 
 		if (event.queryStringParameters) {
 			qsParm = event.queryStringParameters.param;
 		}
+		const data = event.body;
+		const upload_ts = Date.now() / 1000;
+		const task_id = hash(`${upload_ts}-lyrebird`);
+		const path = `task_${task_id}`;
+		await dynamodb.putItem({
+			TableName: 'lyrebird-tasks',
+			Item: AWS.DynamoDB.Converter.marshall({
+				id: task_id,
+				ttl: upload_ts + 3600,
+				uploadPath: path,
+				upload_ts,
+			}),
+		}).promise();
+		await s3.putObject({
+			Body: data, 
+			Bucket: uploadBucket, 
+			Key: path,
+		}).promise();
 		return {
 			headers: standardHeaders,
 			statusCode: 200,
 			body: JSON.stringify({
-				success: true,
+				task_id,
 			}),
 		};
 	} catch (e) {

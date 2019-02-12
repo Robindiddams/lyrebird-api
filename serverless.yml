@@ -9,20 +9,20 @@ provider:
   name: aws
   runtime: nodejs8.10
   iamRoleStatements:
-    # - Effect: "Allow"
-    #   Action: 
-    #    - dynamodb:Scan
-    #    - dynamodb:PutItem
-    #    - dynamodb:DeleteItem
-    #   Resource: "arn:aws:dynamodb:us-east-1:*:table/beans"
-   - Effect: "Allow"
+    - Effect: "Allow"
+      Action: 
+       - dynamodb:Scan
+       - dynamodb:PutItem
+       - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:us-east-1:*:table/lyrebird-tasks"
+    - Effect: "Allow"
       Action: 
        - s3:PutObject
-      Resource: "arn:aws:s3::*:lyrebird-uploads"
-   - Effect: "Allow"
+      Resource: "arn:aws:s3:::lyrebird-uploads/*"
+    - Effect: "Allow"
       Action: 
        - s3:GetObject
-      Resource: "arn:aws:s3::*:lyrebird-uploads"
+      Resource: "arn:aws:s3:::lyrebird-completion/*"
 custom:
   webpack:
     webpackConfig: 'webpack.config.js'   # Name of webpack configuration file
