@@ -1,0 +1,21 @@
+{
+  "name": "lyrebird-api",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "git@github.com:Robindiddams/lyrebird-api.git",
+  "author": "Robin Diddams <robindiddams@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.19",
+    "@types/aws-sdk": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^10.12.24",
+    "serverless-offline": "^4.4.0",
+    "serverless-webpack": "^5.2.0",
+    "source-map-support": "^0.5.10",
+    "ts-loader": "^5.3.3",
+    "typescript": "^3.3.3",
+    "webpack": "^4.29.3"
+  }
+}
