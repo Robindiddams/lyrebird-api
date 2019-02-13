@@ -52,6 +52,20 @@ functions:
               - X-Amz-Date
               - Authorization
               - X-Api-Key
+  status:
+    handler: src/api.status
+    events:
+      - http:
+          path: /status
+          method: get
+          cors:
+            origins:
+              - '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
   # download:
   #   handler: src/api.download
   #   events:
