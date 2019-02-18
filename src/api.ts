@@ -1,7 +1,7 @@
-import { APIGatewayEvent, Callback, Context, Handler } from 'aws-lambda';
+import { APIGatewayEvent, S3Event, Context, Handler } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
-
+import { TaskRecord } from './types';
 const dynamodb = new AWS.DynamoDB({
 	region: 'us-east-1',
 });
@@ -12,46 +12,34 @@ const s3 = new AWS.S3({
 
 const uploadBucket = "lyrebird-uploads";
 
-const hash = (data) => {
-	return crypto.createHash('sha256').update(data).digest('base64');
-};
+const makeID = () => {
+	return crypto.randomBytes(5).toString('hex');
+}
 
 const standardHeaders = {
 	"Access-Control-Allow-Origin" : "*", // Required for CORS support to work
 	"Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS
 }
 
-interface taskRecord {
-	upload_ts: number;
-  ttl: number;
-  uploadPath: string;
-  completedPath: string;
-  id: string;
-}
-
 export const upload: Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
-		let qsParm = '';
-		if (event.queryStringParameters) {
-			qsParm = event.queryStringParameters.param;
-		}
 		const data = event.body;
-		const upload_ts = Date.now() / 1000;
-		const task_id = hash(`${upload_ts}-lyrebird`);
-		const path = `task_${task_id}`;
+		const task_id = makeID();
+		let ts = Date.now() / 1000;
+		const dynarow: TaskRecord = {
+			id: task_id,
+			upload_ts: ts,
+			upload_path: `task_${task_id}`,
+			ttl: ts + 3600,
+		};		
 		await dynamodb.putItem({
 			TableName: 'lyrebird-tasks',
-			Item: AWS.DynamoDB.Converter.marshall({
-				id: task_id,
-				ttl: upload_ts + 3600,
-				uploadPath: path,
-				upload_ts,
-			}),
+			Item: AWS.DynamoDB.Converter.marshall(dynarow),
 		}).promise();
 		await s3.putObject({
 			Body: data, 
 			Bucket: uploadBucket, 
-			Key: path,
+			Key: dynarow.upload_path,
 		}).promise();
 		return {
 			headers: standardHeaders,
@@ -108,10 +96,9 @@ export const status : Handler = async (event: APIGatewayEvent, context: Context)
 				}),
 			};
 		}
-		const task = record as taskRecord;
-		console.log(task);
+		const task = record as TaskRecord;
 		let completed = false;
-		if (task.completedPath) {
+		if (task.completed_path) {
 			completed = true
 		}
 		return {

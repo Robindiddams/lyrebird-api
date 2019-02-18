@@ -13,16 +13,26 @@ provider:
       Action: 
        - dynamodb:Scan
        - dynamodb:PutItem
-       - dynamodb:DeleteItem
+       - dynamodb:GetItem
+       - dynamodb:UpdateItem
+      #  - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:us-east-1:*:table/lyrebird-tasks"
     - Effect: "Allow"
       Action: 
        - s3:PutObject
+       - s3:PutObjectTagging
+       - s3:GetObject
+       - s3:GetObjectTagging
+       - s3:PutBucketNotification
       Resource: "arn:aws:s3:::lyrebird-uploads/*"
     - Effect: "Allow"
       Action: 
+       - s3:PutObject
+       - s3:PutObjectTagging
        - s3:GetObject
-      Resource: "arn:aws:s3:::lyrebird-completion/*"
+       - s3:GetObjectTagging
+       - s3:PutBucketNotification
+      Resource: "arn:aws:s3:::lyrebird-sounds/*"
 custom:
   webpack:
     webpackConfig: 'webpack.config.js'   # Name of webpack configuration file
@@ -66,17 +76,15 @@ functions:
               - X-Amz-Date
               - Authorization
               - X-Api-Key
-  # download:
-  #   handler: src/api.download
-  #   events:
-  #     - http:
-  #         path: /download
-  #         method: get
-  #         cors:
-  #           origins:
-  #             - '*'
-  #           headers:
-  #             - Content-Type
-  #             - X-Amz-Date
-  #             - Authorization
-  #             - X-Api-Key
+  preprocess:
+    handler: src/s3triggers.preprocess
+    events:
+      - s3:
+          bucket: lyrebird-uploads
+          event: s3:ObjectCreated:*
+  postprocess:
+    handler: src/s3triggers.postprocess
+    events:
+      - s3:
+          bucket: lyrebird-sounds
+          event: s3:ObjectCreated:*
