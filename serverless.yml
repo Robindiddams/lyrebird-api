@@ -49,11 +49,11 @@ package:
 
 functions:
   upload:
-    handler: src/api.upload
+    handler: src/api.getUploadURL
     events:
       - http:
           path: /upload
-          method: post
+          method: get
           cors:
             origins:
               - '*'

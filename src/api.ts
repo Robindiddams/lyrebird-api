@@ -11,6 +11,7 @@ const s3 = new AWS.S3({
 });
 
 const uploadBucket = "lyrebird-uploads";
+const soundBucket = "lyrebird-sounds";
 
 const makeID = () => {
 	return crypto.randomBytes(5).toString('hex');
@@ -21,25 +22,41 @@ const standardHeaders = {
 	"Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS
 }
 
-export const upload: Handler = async (event: APIGatewayEvent, context: Context) => {
+const getTaskRecord = async (task_id: string) => {
+	const output = await dynamodb.getItem({
+		TableName: 'lyrebird-tasks',
+		Key: {
+			"id": {
+				S: task_id,
+			},
+		},
+	}).promise();
+	const record = AWS.DynamoDB.Converter.unmarshall(output.Item);
+	if (!record) {
+		throw new Error(`no record of task: ${task_id}`);
+	}
+	return record as TaskRecord;
+}
+
+export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
-		const data = event.body;
 		const task_id = makeID();
 		let ts = Date.now() / 1000;
 		const dynarow: TaskRecord = {
 			id: task_id,
 			upload_ts: ts,
-			upload_path: `task_${task_id}`,
 			ttl: ts + 3600,
-		};		
+		};
+		const uploadpath = `task_${task_id}`;
+		const upload_url = s3.getSignedUrl('putObject', {
+			Bucket: uploadBucket,
+			Key: uploadpath,
+			Expires: 60,
+			ContentType: 'application/octet-stream',
+		});
 		await dynamodb.putItem({
 			TableName: 'lyrebird-tasks',
 			Item: AWS.DynamoDB.Converter.marshall(dynarow),
-		}).promise();
-		await s3.putObject({
-			Body: data, 
-			Bucket: uploadBucket, 
-			Key: dynarow.upload_path,
 		}).promise();
 		return {
 			headers: standardHeaders,
@@ -47,6 +64,7 @@ export const upload: Handler = async (event: APIGatewayEvent, context: Context) 
 			body: JSON.stringify({
 				success: true,
 				task_id,
+				upload_url,
 			}),
 		};
 	} catch (e) {
@@ -77,38 +95,27 @@ export const status : Handler = async (event: APIGatewayEvent, context: Context)
 				}),
 			}; 
 		}
-		const output = await dynamodb.getItem({
-			TableName: 'lyrebird-tasks',
-			Key: {
-				"id": {
-					S: task_id,
-				},
-			},
-		}).promise();
-		const record = AWS.DynamoDB.Converter.unmarshall(output.Item);
-		if (!record) {
+		const task = await getTaskRecord(task_id);
+		if (task.completed_path) {
+			const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 60 });
 			return {
 				headers: standardHeaders,
-				statusCode: 500,
+				statusCode: 200,
 				body: JSON.stringify({
-					success: false,
-					message: "task not found",
+					success: true,
+					completed: true,
+					download_url: url,
 				}),
 			};
-		}
-		const task = record as TaskRecord;
-		let completed = false;
-		if (task.completed_path) {
-			completed = true
 		}
 		return {
 			headers: standardHeaders,
 			statusCode: 200,
 			body: JSON.stringify({
 				success: true,
-				completed,
+				completed: false,
 			}),
-		};
+		};	
 	} catch (e) {
 		console.error('ERROR:', e.message);
 		return {

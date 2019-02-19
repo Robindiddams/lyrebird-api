@@ -24,9 +24,24 @@ export const preprocess : Handler = async (event: S3Event, context: Context) => 
 			throw new Error(`number of records is not one`)
 		}
 		const task_id = getTaskFromKey(event.Records[0].s3.object.key);
-		
 		console.log(`starting preprocess for task ${task_id}`);
-		
+		await dynamodb.updateItem({
+      ExpressionAttributeNames: {
+        "#UP": "upload_path", 
+      }, 
+      ExpressionAttributeValues: {
+        ":u": {
+          S: `task_${task_id}`,
+        },
+      },
+      Key: {
+        'id': {
+          S: task_id,
+        }
+      }, 
+      TableName: "lyrebird-tasks", 
+      UpdateExpression: "SET #UP = :u"
+    }).promise();
 		// TODO(robin): Invoke model
 		await s3.copyObject({
 			Bucket: 'lyrebird-sounds', 
