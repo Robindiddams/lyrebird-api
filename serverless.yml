@@ -15,6 +15,7 @@ provider:
        - dynamodb:PutItem
        - dynamodb:GetItem
        - dynamodb:UpdateItem
+       - dynamodb:BatchGetItem
       #  - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:us-east-1:*:table/lyrebird-tasks"
     - Effect: "Allow"
@@ -67,6 +68,20 @@ functions:
     events:
       - http:
           path: /status
+          method: post
+          cors:
+            origins:
+              - '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+  statusOne:
+    handler: src/api.statusOne
+    events:
+      - http:
+          path: /status_one
           method: get
           cors:
             origins:

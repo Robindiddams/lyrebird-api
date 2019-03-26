@@ -2,6 +2,7 @@ import { APIGatewayEvent, S3Event, Context, Handler } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
 import { TaskRecord } from './types';
+import { Translate } from 'aws-sdk';
 const dynamodb = new AWS.DynamoDB({
 	region: 'us-east-1',
 });
@@ -22,7 +23,7 @@ const standardHeaders = {
 	"Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS
 }
 
-const getTaskRecord = async (task_id: string) => {
+const getOneTaskRecord = async (task_id: string) => {
 	const output = await dynamodb.getItem({
 		TableName: 'lyrebird-tasks',
 		Key: {
@@ -36,6 +37,29 @@ const getTaskRecord = async (task_id: string) => {
 		throw new Error(`no record of task: ${task_id}`);
 	}
 	return record as TaskRecord;
+}
+
+const getTaskRecords = async (task_ids: Array<string> ) => {
+	const keys = task_ids.map((task_id) => {
+		return {
+			'id': {
+				S: task_id,
+			}
+		}
+	});
+	const output = await dynamodb.batchGetItem({
+		RequestItems: {
+			'lyrebird-tasks': {
+				Keys: keys,
+			}
+		}
+	}).promise();
+	const records = output.Responses['lyrebird-tasks'].map((item) => { return AWS.DynamoDB.Converter.unmarshall(item) });
+	console.log(records)
+	if (!records) {
+		throw new Error(`no record of task: ${task_ids}`);
+	}
+	return records as Array<TaskRecord>;
 }
 
 export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Context) => {
@@ -80,7 +104,7 @@ export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Con
   }
 }
 
-export const status : Handler = async (event: APIGatewayEvent, context: Context) => {
+export const statusOne : Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
 		let task_id = '';
 		if (event.queryStringParameters) {
@@ -95,7 +119,7 @@ export const status : Handler = async (event: APIGatewayEvent, context: Context)
 				}),
 			}; 
 		}
-		const task = await getTaskRecord(task_id);
+		const task = await getOneTaskRecord(task_id);
 		if (task.completed_path) {
 			const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 60 });
 			return {
@@ -114,6 +138,73 @@ export const status : Handler = async (event: APIGatewayEvent, context: Context)
 			body: JSON.stringify({
 				success: true,
 				completed: false,
+			}),
+		};	
+	} catch (e) {
+		console.error('ERROR:', e.message);
+		return {
+			headers: standardHeaders,
+			statusCode: 500,
+			body: JSON.stringify({
+				success: false,
+				message: e.message,
+			}),
+		};
+  }
+}
+
+
+export const status : Handler = async (event: APIGatewayEvent, context: Context) => {
+	try {
+		let task_ids = [];
+		if (event.body) {
+			const body = JSON.parse(event.body);
+			task_ids = body.task_ids;
+		} else {
+			return {
+				headers: standardHeaders,
+				statusCode: 400,
+				body: JSON.stringify({
+					success: false,
+					message: 'missing task ids',
+				}),
+			}; 
+		}
+		const tasks = await getTaskRecords(task_ids);
+		console.log(tasks);
+		const statuses = tasks.map((task) => {
+			 if (task.completed_path) {
+					const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 300 });
+					return {
+						task_id: task.id,
+						completed: true,
+						download_url: url,
+					};
+			 } else {
+				 return {
+					 task_id: task.id,
+					 completed: false,
+				 }
+			 }
+		});
+		// if (task.completed_path) {
+		// 	const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 60 });
+		// 	return {
+		// 		headers: standardHeaders,
+		// 		statusCode: 200,
+		// 		body: JSON.stringify({
+		// 			success: true,
+		// 			completed: true,
+		// 			download_url: url,
+		// 		}),
+		// 	};
+		// }
+		return {
+			headers: standardHeaders,
+			statusCode: 200,
+			body: JSON.stringify({
+				success: true,
+				tasks: statuses,
 			}),
 		};	
 	} catch (e) {
