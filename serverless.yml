@@ -25,14 +25,6 @@ provider:
        - s3:GetObject
        - s3:GetObjectTagging
        - s3:PutBucketNotification
-      Resource: "arn:aws:s3:::lyrebird-uploads/*"
-    - Effect: "Allow"
-      Action: 
-       - s3:PutObject
-       - s3:PutObjectTagging
-       - s3:GetObject
-       - s3:GetObjectTagging
-       - s3:PutBucketNotification
       Resource: "arn:aws:s3:::lyrebird-sounds/*"
 custom:
   webpack:
@@ -50,7 +42,7 @@ package:
 
 functions:
   upload:
-    handler: src/api.getUploadURL
+    handler: src/api.startModel
     events:
       - http:
           path: /upload
@@ -77,26 +69,6 @@ functions:
               - X-Amz-Date
               - Authorization
               - X-Api-Key
-  statusOne:
-    handler: src/api.statusOne
-    events:
-      - http:
-          path: /status_one
-          method: get
-          cors:
-            origins:
-              - '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-  preprocess:
-    handler: src/s3triggers.preprocess
-    events:
-      - s3:
-          bucket: lyrebird-uploads
-          event: s3:ObjectCreated:*
   postprocess:
     handler: src/s3triggers.postprocess
     events:

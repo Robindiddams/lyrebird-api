@@ -1,8 +1,10 @@
 import { APIGatewayEvent, S3Event, Context, Handler } from 'aws-lambda';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
-import { TaskRecord } from './types';
+import { TaskRecord, modelResp } from './types';
 import { Translate } from 'aws-sdk';
+import * as request from 'request-promise-native';
+
 const dynamodb = new AWS.DynamoDB({
 	region: 'us-east-1',
 });
@@ -11,8 +13,9 @@ const s3 = new AWS.S3({
 	region: 'us-east-1',
 });
 
-const uploadBucket = "lyrebird-uploads";
-const soundBucket = "lyrebird-sounds";
+// const uploadBucket = "lyrebird-uploads";
+const soundBucket = 'lyrebird-sounds';
+const modelURL = 'http://3.94.22.232:8080'
 
 const makeID = () => {
 	return crypto.randomBytes(5).toString('hex');
@@ -21,22 +24,6 @@ const makeID = () => {
 const standardHeaders = {
 	"Access-Control-Allow-Origin" : "*", // Required for CORS support to work
 	"Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS
-}
-
-const getOneTaskRecord = async (task_id: string) => {
-	const output = await dynamodb.getItem({
-		TableName: 'lyrebird-tasks',
-		Key: {
-			"id": {
-				S: task_id,
-			},
-		},
-	}).promise();
-	const record = AWS.DynamoDB.Converter.unmarshall(output.Item);
-	if (!record) {
-		throw new Error(`no record of task: ${task_id}`);
-	}
-	return record as TaskRecord;
 }
 
 const getTaskRecords = async (task_ids: Array<string> ) => {
@@ -62,22 +49,35 @@ const getTaskRecords = async (task_ids: Array<string> ) => {
 	return records as Array<TaskRecord>;
 }
 
-export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Context) => {
+export const startModel: Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
+		if (!event.queryStringParameters) {
+			return {
+				headers: standardHeaders,
+				statusCode: 400,
+				body: JSON.stringify({
+					success: false,
+					message: 'missing seed',
+				}),
+			}; 
+		}
+		const {seed} = event.queryStringParameters;
+		// TODO: pass seed
 		const task_id = makeID();
 		let ts = Date.now() / 1000;
 		const dynarow: TaskRecord = {
 			id: task_id,
-			upload_ts: ts,
+			started_ts: ts,
+			status: 'created',
 			ttl: ts + 3600,
 		};
-		const uploadpath = `task_${task_id}`;
-		const upload_url = s3.getSignedUrl('putObject', {
-			Bucket: uploadBucket,
-			Key: uploadpath,
-			Expires: 60,
-			ContentType: 'application/octet-stream',
-		});
+		// invoke model in fargate
+		console.log('staring model')
+		const data = await request(`${modelURL}/?task_id=${task_id}`);
+    const started = JSON.parse(data) as modelResp
+		if (!started.success) {
+			throw new Error('error starting model');
+		}
 		await dynamodb.putItem({
 			TableName: 'lyrebird-tasks',
 			Item: AWS.DynamoDB.Converter.marshall(dynarow),
@@ -88,7 +88,6 @@ export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Con
 			body: JSON.stringify({
 				success: true,
 				task_id,
-				upload_url,
 			}),
 		};
 	} catch (e) {
@@ -103,56 +102,6 @@ export const getUploadURL: Handler = async (event: APIGatewayEvent, context: Con
 		};
   }
 }
-
-export const statusOne : Handler = async (event: APIGatewayEvent, context: Context) => {
-	try {
-		let task_id = '';
-		if (event.queryStringParameters) {
-			task_id = event.queryStringParameters.task_id;
-		} else {
-			return {
-				headers: standardHeaders,
-				statusCode: 400,
-				body: JSON.stringify({
-					success: false,
-					message: 'missing task id',
-				}),
-			}; 
-		}
-		const task = await getOneTaskRecord(task_id);
-		if (task.completed_path) {
-			const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 60 });
-			return {
-				headers: standardHeaders,
-				statusCode: 200,
-				body: JSON.stringify({
-					success: true,
-					completed: true,
-					download_url: url,
-				}),
-			};
-		}
-		return {
-			headers: standardHeaders,
-			statusCode: 200,
-			body: JSON.stringify({
-				success: true,
-				completed: false,
-			}),
-		};	
-	} catch (e) {
-		console.error('ERROR:', e.message);
-		return {
-			headers: standardHeaders,
-			statusCode: 500,
-			body: JSON.stringify({
-				success: false,
-				message: e.message,
-			}),
-		};
-  }
-}
-
 
 export const status : Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
@@ -171,34 +120,21 @@ export const status : Handler = async (event: APIGatewayEvent, context: Context)
 			}; 
 		}
 		const tasks = await getTaskRecords(task_ids);
-		console.log(tasks);
 		const statuses = tasks.map((task) => {
-			 if (task.completed_path) {
+			 if (task.status === 'done' && task.completed_path) {
 					const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 300 });
 					return {
 						task_id: task.id,
-						completed: true,
+						status: task.status,
 						download_url: url,
 					};
 			 } else {
 				 return {
-					 task_id: task.id,
-					 completed: false,
+						task_id: task.id,
+						status: task.status,
 				 }
 			 }
 		});
-		// if (task.completed_path) {
-		// 	const url = s3.getSignedUrl('getObject', { Bucket: soundBucket, Key: task.completed_path, Expires: 60 });
-		// 	return {
-		// 		headers: standardHeaders,
-		// 		statusCode: 200,
-		// 		body: JSON.stringify({
-		// 			success: true,
-		// 			completed: true,
-		// 			download_url: url,
-		// 		}),
-		// 	};
-		// }
 		return {
 			headers: standardHeaders,
 			statusCode: 200,

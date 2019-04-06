@@ -8,6 +8,8 @@
   "dependencies": {
     "@types/aws-lambda": "^8.10.19",
     "@types/aws-sdk": "^2.7.0",
+    "@types/request-promise-native": "^1.0.15",
+    "request": "^2.88.0",
     "serverless-plugin-existing-s3": "^2.3.0"
   },
   "devDependencies": {

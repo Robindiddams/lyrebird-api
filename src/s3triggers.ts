@@ -17,43 +17,6 @@ const getTaskFromKey = (key: string) => {
   return key.match(taskRE)[1];
 }
 
-// preprocess is called when a new recording is put into the upload bucket
-export const preprocess : Handler = async (event: S3Event, context: Context) => {
-	try {
-		if (event.Records.length != 1) {
-			throw new Error(`number of records is not one`)
-		}
-		const task_id = getTaskFromKey(event.Records[0].s3.object.key);
-		console.log(`starting preprocess for task ${task_id}`);
-		await dynamodb.updateItem({
-      ExpressionAttributeNames: {
-        "#UP": "upload_path", 
-      }, 
-      ExpressionAttributeValues: {
-        ":u": {
-          S: `task_${task_id}`,
-        },
-      },
-      Key: {
-        'id': {
-          S: task_id,
-        }
-      }, 
-      TableName: "lyrebird-tasks", 
-      UpdateExpression: "SET #UP = :u"
-    }).promise();
-		// TODO(robin): Invoke model
-		await s3.copyObject({
-			Bucket: 'lyrebird-sounds', 
-			CopySource: `/lyrebird-uploads/task_${task_id}`, 
-			Key: `task_${task_id}`,
-		 }).promise();
-	} catch (e) {
-			console.error('Event:', JSON.stringify(event, null, 2));
-			console.error('ERROR:', e.message);
-	}
-}
-
 // preprocess is called when a new sound is put into the sounds bucket
 export const postprocess : Handler = async (event: S3Event, context: Context) => {
 	try {
@@ -67,15 +30,19 @@ export const postprocess : Handler = async (event: S3Event, context: Context) =>
     await dynamodb.updateItem({
       ExpressionAttributeNames: {
         "#CTS": "completed_ts", 
-        "#CP": "completed_path"
+				"#CP": "completed_path",
+				"#S": "status",
       }, 
       ExpressionAttributeValues: {
         ":p": {
-          S: `task_${task_id}`,
+          S: key,
         },
         ":ts": {
           N: ts.toString(),
-        }, 
+				},
+				":s": {
+					S: 'done',
+				}
       },
       Key: {
         'id': {
@@ -83,7 +50,7 @@ export const postprocess : Handler = async (event: S3Event, context: Context) =>
         }
       }, 
       TableName: "lyrebird-tasks", 
-      UpdateExpression: "SET #CTS = :ts, #CP = :p"
+      UpdateExpression: "SET #CTS = :ts, #CP = :p, #S = :s"
     }).promise();
 	} catch (e) {
 		console.error('Event:', JSON.stringify(event, null, 2));
