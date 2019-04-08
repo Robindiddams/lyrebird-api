@@ -15,7 +15,7 @@ const s3 = new AWS.S3({
 
 // const uploadBucket = "lyrebird-uploads";
 const soundBucket = 'lyrebird-sounds';
-const modelURL = 'http://3.94.22.232:8080'
+const modelURL = 'http://3.80.8.51:8080'
 
 const makeID = () => {
 	return crypto.randomBytes(5).toString('hex');
@@ -51,7 +51,7 @@ const getTaskRecords = async (task_ids: Array<string> ) => {
 
 export const startModel: Handler = async (event: APIGatewayEvent, context: Context) => {
 	try {
-		if (!event.queryStringParameters) {
+		if (!(event.queryStringParameters && event.queryStringParameters.seed)) {
 			return {
 				headers: standardHeaders,
 				statusCode: 400,
@@ -61,7 +61,7 @@ export const startModel: Handler = async (event: APIGatewayEvent, context: Conte
 				}),
 			}; 
 		}
-		const {seed} = event.queryStringParameters;
+		const { seed } = event.queryStringParameters;
 		// TODO: pass seed
 		const task_id = makeID();
 		let ts = Date.now() / 1000;
@@ -73,7 +73,7 @@ export const startModel: Handler = async (event: APIGatewayEvent, context: Conte
 		};
 		// invoke model in fargate
 		console.log('staring model')
-		const data = await request(`${modelURL}/?task_id=${task_id}`);
+		const data = await request(`${modelURL}/?task_id=${task_id}&seed=${seed}`);
     const started = JSON.parse(data) as modelResp
 		if (!started.success) {
 			throw new Error('error starting model');
